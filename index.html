@@ -127,7 +127,18 @@
     padding:9px 12px; margin-bottom:7px; font-size:13px;
   }
   .item .meta{color:var(--muted); font-size:11.5px;}
+  .item .actions{display:flex; gap:2px;}
   .item .del{color:var(--bad); font-size:12px; background:none; border:none; padding:6px;}
+  .item .edit{color:var(--teal); font-size:12px; background:none; border:none; padding:6px;}
+
+  .edit-indicator{
+    margin-top:6px; font-size:11.5px; color:var(--amber);
+  }
+  .edit-indicator a{color:var(--teal); text-decoration:underline;}
+
+  .confirm-row{display:flex; gap:10px; margin-top:4px;}
+  .confirm-row button{flex:1;}
+  .confirm-msg{color:var(--muted); font-size:13px; margin-bottom:14px; line-height:1.4;}
 
   .overlay{
     position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50;
@@ -156,6 +167,9 @@
   <div>
     <div class="label">Consecutivo</div>
     <div class="num" id="fichaNum">1</div>
+    <div class="edit-indicator" id="editIndicator" style="display:none;">
+      ✏️ Editando registro #<span id="editIndicatorNum"></span> · <a href="javascript:void(0)" onclick="cancelEdit()">cancelar</a>
+    </div>
   </div>
   <div class="count">Registros guardados<br><b id="countNum">0</b></div>
 </div>
@@ -230,11 +244,17 @@
         </select>
       </div>
       <div class="row2">
-        <div class="field"><label>Circuito AT</label><input id="c_J" type="text"></div>
+        <div class="field">
+          <label>Circuito AT</label>
+          <select id="c_J"><option>ND</option><option>ALTA TENSIÓN</option></select>
+        </div>
         <div class="field"><label>Circuito MT</label><input id="c_K" type="text"></div>
       </div>
       <div class="row2">
-        <div class="field"><label>Circuito BT</label><input id="c_L" type="text"></div>
+        <div class="field">
+          <label>Circuito BT</label>
+          <select id="c_L"><option>ND</option><option>BAJA TENSIÓN</option></select>
+        </div>
         <div class="field"><label>Circuito AP</label><input id="c_M" type="text"></div>
       </div>
       <div class="field">
@@ -243,7 +263,12 @@
       </div>
       <div class="field">
         <label>Propietario poste</label>
-        <input id="c_O" type="text" placeholder="Ej. AFINIA">
+        <select id="c_O_sel" onchange="handlePropietarioChange()">
+          <option value="AFINIA">AFINIA</option>
+          <option value="SELECTA">SELECTA</option>
+          <option value="OTRO">OTRO (escribir nombre)</option>
+        </select>
+        <input id="c_O_otro" type="text" placeholder="Nombre del propietario" style="display:none; margin-top:8px;">
       </div>
       <div class="field">
         <label>Tipo de cámara</label>
@@ -333,7 +358,7 @@
 
 <footer>
   <button class="secondary" onclick="exportExcel()">⬇ Exportar Excel</button>
-  <button class="primary" onclick="guardarRegistro()">Guardar y continuar</button>
+  <button class="primary" id="saveBtn" onclick="guardarRegistro()">Guardar y continuar</button>
 </footer>
 
 <div class="overlay" id="proyOverlay" style="display:none;">
@@ -345,6 +370,17 @@
     <div class="field"><label>Tipo de fibra</label><input id="p_fibra" type="text" placeholder="Ej. FIBRA ÓPTICA"></div>
     <div class="field"><label>Dirección / zona</label><input id="p_direccion" type="text"></div>
     <button class="primary close" onclick="closeProyecto()">Listo</button>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay" style="display:none;">
+  <div class="sheet">
+    <h2 id="confirmTitle">Confirmar</h2>
+    <div class="confirm-msg" id="confirmMsg"></div>
+    <div class="confirm-row">
+      <button class="secondary" onclick="closeConfirm(false)">Cancelar</button>
+      <button class="primary" id="confirmOkBtn" onclick="closeConfirm(true)">Confirmar</button>
+    </div>
   </div>
 </div>
 
@@ -366,6 +402,8 @@ const DEFAULT_ND = ["G","J","K","L","M","Q","R","S","T","U","V","W","X","Y","Z",
 
 let registros = [];
 let proyecto = {municipio:"", inicial:"", final:"", fibra:"", direccion:""};
+let editingIndex = null;
+let confirmCallback = null;
 
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -373,8 +411,54 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'), 1400);
 }
 
-function getVal(col){ return document.getElementById('c_'+col).value.trim(); }
-function setVal(col, v){ document.getElementById('c_'+col).value = v; }
+function askConfirm(title, msg, onConfirm){
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMsg').textContent = msg;
+  confirmCallback = onConfirm;
+  document.getElementById('confirmOverlay').style.display = 'flex';
+}
+function closeConfirm(result){
+  document.getElementById('confirmOverlay').style.display = 'none';
+  const cb = confirmCallback;
+  confirmCallback = null;
+  if(result && cb) cb();
+}
+
+function handlePropietarioChange(){
+  const sel = document.getElementById('c_O_sel').value;
+  document.getElementById('c_O_otro').style.display = (sel==='OTRO') ? 'block' : 'none';
+}
+
+function getVal(col){
+  if(col==='O'){
+    const sel = document.getElementById('c_O_sel').value;
+    if(sel==='OTRO'){
+      return document.getElementById('c_O_otro').value.trim() || 'ND';
+    }
+    return sel;
+  }
+  return document.getElementById('c_'+col).value.trim();
+}
+function setVal(col, v){
+  if(col==='O'){
+    const otroInput = document.getElementById('c_O_otro');
+    if(v==='AFINIA' || v==='SELECTA'){
+      document.getElementById('c_O_sel').value = v;
+      otroInput.style.display = 'none';
+      otroInput.value = '';
+    } else {
+      document.getElementById('c_O_sel').value = 'OTRO';
+      otroInput.style.display = 'block';
+      otroInput.value = v;
+    }
+    return;
+  }
+  document.getElementById('c_'+col).value = v;
+}
+
+function nextConsecutivo(){
+  return registros.reduce((m,r)=>Math.max(m, parseInt(r.B)||0), 0) + 1;
+}
 
 function resetForm(keepConsecutivo){
   COLS.forEach(col=>{
@@ -434,17 +518,72 @@ function guardarRegistro(){
   if(!reg.D || reg.D==="ND" || !reg.E || reg.E==="ND"){
     if(!confirm("No pusiste latitud/longitud. ¿Guardar de todas formas?")) return;
   }
-  registros.push(reg);
-  saveStorage();
-  renderList();
-  showToast("Registro "+reg.B+" guardado");
-  resetForm(false);
+  const isEdit = editingIndex !== null;
+  const title = isEdit ? "Actualizar registro" : "Guardar registro";
+  const msg = `Elemento #${reg.B} · ${reg.A}` + (isEdit ? " — se actualizará el registro existente. ¿Confirmas?" : ". ¿Confirmas que los datos son correctos?");
+
+  askConfirm(title, msg, ()=>{
+    if(isEdit){
+      registros[editingIndex] = reg;
+      editingIndex = null;
+      document.getElementById('editIndicator').style.display = 'none';
+      document.getElementById('saveBtn').textContent = 'Guardar y continuar';
+      showToast("Registro "+reg.B+" actualizado");
+    } else {
+      registros.push(reg);
+      showToast("Registro "+reg.B+" guardado");
+    }
+    saveStorage();
+    renderList();
+    resetForm(false);
+    const next = nextConsecutivo();
+    setVal("B", next);
+    document.getElementById('fichaNum').textContent = next;
+  });
+}
+
+function editarRegistro(idx){
+  const r = registros[idx];
+  if(!r) return;
+  COLS.forEach(col => setVal(col, r[col]));
+  editingIndex = idx;
+  document.getElementById('fichaNum').textContent = r.B;
+  document.getElementById('editIndicatorNum').textContent = r.B;
+  document.getElementById('editIndicator').style.display = 'block';
+  document.getElementById('saveBtn').textContent = 'Actualizar registro';
+  window.scrollTo({top:0, behavior:'smooth'});
+  showToast('Editando registro #'+r.B);
+}
+
+function cancelEdit(){
+  editingIndex = null;
+  document.getElementById('editIndicator').style.display = 'none';
+  document.getElementById('saveBtn').textContent = 'Guardar y continuar';
+  resetForm(true);
+  const next = nextConsecutivo();
+  setVal("B", next);
+  document.getElementById('fichaNum').textContent = next;
+  showToast('Edición cancelada');
 }
 
 function eliminarRegistro(idx){
-  registros.splice(idx,1);
-  saveStorage();
-  renderList();
+  const r = registros[idx];
+  if(!r) return;
+  askConfirm("Eliminar registro", `¿Eliminar el elemento #${r.B} · ${r.A}? Esta acción no se puede deshacer.`, ()=>{
+    registros.splice(idx,1);
+    if(editingIndex === idx){
+      editingIndex = null;
+      document.getElementById('editIndicator').style.display = 'none';
+      document.getElementById('saveBtn').textContent = 'Guardar y continuar';
+      resetForm(true);
+    }
+    saveStorage();
+    renderList();
+    const next = nextConsecutivo();
+    setVal("B", next);
+    document.getElementById('fichaNum').textContent = next;
+    showToast('Registro eliminado');
+  });
 }
 
 function renderList(){
@@ -456,7 +595,10 @@ function renderList(){
     const div = document.createElement('div');
     div.className = 'item';
     div.innerHTML = `<div><b>#${r.B}</b> · ${r.A}<div class="meta">${r.D!=="ND"?r.D+", "+r.E:"sin coordenadas"}</div></div>
-      <button class="del" onclick="eliminarRegistro(${realIdx})">Borrar</button>`;
+      <div class="actions">
+        <button class="edit" onclick="editarRegistro(${realIdx})">Editar</button>
+        <button class="del" onclick="eliminarRegistro(${realIdx})">Borrar</button>
+      </div>`;
     body.appendChild(div);
   });
 }
@@ -502,9 +644,9 @@ async function loadStorage(){
   renderList();
   closeProyecto(); // solo para refrescar título/subtítulo, no abre overlay
   document.getElementById('proyOverlay').style.display = 'none';
-  const maxB = registros.reduce((m,r)=>Math.max(m, parseInt(r.B)||0), 0);
-  setVal("B", maxB+1);
-  document.getElementById('fichaNum').textContent = maxB+1;
+  const next = nextConsecutivo();
+  setVal("B", next);
+  document.getElementById('fichaNum').textContent = next;
 }
 
 function exportExcel(){
@@ -537,7 +679,7 @@ function exportExcel(){
 // inicializar selects con "ND" por defecto donde aplica
 DEFAULT_ND.forEach(col=>{ if(document.getElementById('c_'+col) && document.getElementById('c_'+col).tagName!=='SELECT') setVal(col,"ND"); });
 setVal("H","ND"); setVal("N","ND"); setVal("P","ND"); setVal("Q","ND"); setVal("G","ND");
-setVal("A","AEREO"); setVal("I","CONCRETO"); setVal("B","1");
+setVal("A","AEREO"); setVal("I","CONCRETO"); setVal("O","AFINIA"); setVal("B","1");
 
 loadStorage();
 </script>
