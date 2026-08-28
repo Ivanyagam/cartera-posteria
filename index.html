@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Cartera de Postería</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  (function(){
+    var saved = 'dark';
+    try{ saved = localStorage.getItem('cartera_theme') || 'dark'; }catch(e){}
+    document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
 <style>
   :root{
     --bg: #14181d;
@@ -18,25 +25,63 @@
     --muted: #8b95a3;
     --good: #3ecf6e;
     --bad: #e55959;
+    --header-grad-1: #171b21;
+    --header-grad-2: #14181d;
+    --ficha-grad-1: #2a2210;
+    --footer-bg: #171b21;
+    --input-bg: #11151a;
+    --primary-text: #1a1200;
+    --overlay-bg: rgba(0,0,0,.55);
     --mono: 'IBM Plex Mono', 'Courier New', monospace;
     --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  /* Tema claro: pensado para usar bajo el sol / luz directa, con más contraste y sin brillos oscuros */
+  html[data-theme="light"]{
+    --bg: #f5f3ee;
+    --panel: #ffffff;
+    --panel-2: #edeae2;
+    --line: #cfc9ba;
+    --amber: #a85f00;
+    --amber-dim: #e8c68a;
+    --teal: #0c7a68;
+    --text: #171a1d;
+    --muted: #565f6b;
+    --good: #1f8a45;
+    --bad: #c1272d;
+    --header-grad-1: #ffffff;
+    --header-grad-2: #f5f3ee;
+    --ficha-grad-1: #f5e3c2;
+    --footer-bg: #ffffff;
+    --input-bg: #ffffff;
+    --primary-text: #ffffff;
+    --overlay-bg: rgba(20,20,15,.35);
   }
   *{box-sizing:border-box;}
   body{
     margin:0; background:var(--bg); color:var(--text);
     font-family:var(--sans); padding-bottom:90px;
     -webkit-tap-highlight-color: transparent;
+    transition: background .2s, color .2s;
   }
   header{
     position:sticky; top:0; z-index:10;
-    background:linear-gradient(180deg, #171b21 0%, #14181d 100%);
+    background:linear-gradient(180deg, var(--header-grad-1) 0%, var(--header-grad-2) 100%);
     border-bottom:1px solid var(--line);
     padding:14px 16px 10px;
+  }
+  .header-top{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
   .tag{
     display:inline-flex; align-items:center; gap:8px;
     font-family:var(--mono); font-size:12px; color:var(--amber);
     letter-spacing:.06em; text-transform:uppercase;
+  }
+  .theme-toggle{
+    flex-shrink:0; width:34px; height:34px; border-radius:50%;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    font-size:16px; display:flex; align-items:center; justify-content:center;
+    padding:0;
   }
   h1{font-size:17px; margin:4px 0 2px; font-weight:700;}
   .sub{color:var(--muted); font-size:12.5px;}
@@ -48,7 +93,7 @@
 
   .ficha{
     margin:14px 16px 6px; padding:14px 16px; border-radius:14px;
-    background:radial-gradient(120% 140% at 0% 0%, #2a2210 0%, var(--panel) 55%);
+    background:radial-gradient(120% 140% at 0% 0%, var(--ficha-grad-1) 0%, var(--panel) 55%);
     border:1px solid var(--amber-dim);
     display:flex; align-items:center; justify-content:space-between;
   }
@@ -74,7 +119,7 @@
     margin-bottom:5px; letter-spacing:.02em;
   }
   .field input, .field select, .field textarea{
-    width:100%; background:#11151a; border:1px solid var(--line);
+    width:100%; background:var(--input-bg); border:1px solid var(--line);
     color:var(--text); padding:10px 11px; border-radius:9px;
     font-size:15px; font-family:var(--mono);
   }
@@ -97,12 +142,12 @@
 
   footer{
     position:fixed; bottom:0; left:0; right:0; z-index:20;
-    background:#171b21; border-top:1px solid var(--line);
+    background:var(--footer-bg); border-top:1px solid var(--line);
     padding:10px 16px calc(10px + env(safe-area-inset-bottom));
     display:flex; gap:10px;
   }
   button.primary{
-    flex:1; background:var(--amber); color:#1a1200; border:none;
+    flex:1; background:var(--amber); color:var(--primary-text); border:none;
     padding:14px; border-radius:11px; font-size:15px; font-weight:700;
   }
   button.secondary{
@@ -141,7 +186,7 @@
   .confirm-msg{color:var(--muted); font-size:13px; margin-bottom:14px; line-height:1.4;}
 
   .overlay{
-    position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50;
+    position:fixed; inset:0; background:var(--overlay-bg); z-index:50;
     display:flex; align-items:flex-end; justify-content:center;
   }
   .sheet{
@@ -157,7 +202,10 @@
 <div id="toast" class="toast"></div>
 
 <header>
-  <span class="tag">● Proyecto de fibra</span>
+  <div class="header-top">
+    <span class="tag">● Proyecto de fibra</span>
+    <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Cambiar tema">🌙</button>
+  </div>
   <h1 id="proyTitle">Cartera de Postería</h1>
   <div class="sub" id="proySub">Toca "Datos del proyecto" para configurar municipio y ubicación</div>
   <button class="proyecto-btn" onclick="openProyecto()">⚙ Datos del proyecto</button>
@@ -404,6 +452,17 @@ let registros = [];
 let proyecto = {municipio:"", inicial:"", final:"", fibra:"", direccion:""};
 let editingIndex = null;
 let confirmCallback = null;
+
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('themeToggle');
+  if(btn) btn.textContent = theme === 'light' ? '☀️' : '🌙';
+  try{ localStorage.setItem('cartera_theme', theme); }catch(e){}
+}
+function toggleTheme(){
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
 
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -681,6 +740,7 @@ DEFAULT_ND.forEach(col=>{ if(document.getElementById('c_'+col) && document.getEl
 setVal("H","ND"); setVal("N","ND"); setVal("P","ND"); setVal("Q","ND"); setVal("G","ND");
 setVal("A","AEREO"); setVal("I","CONCRETO"); setVal("O","AFINIA"); setVal("B","1");
 
+applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
 loadStorage();
 </script>
 </body>
