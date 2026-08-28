@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Cartera de Postería</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #14181d;
+    --panel: #1c2128;
+    --panel-2: #232a33;
+    --line: #2d3541;
+    --amber: #f2a93b;
+    --amber-dim: #7a5a24;
+    --teal: #35c9b0;
+    --text: #eef1f4;
+    --muted: #8b95a3;
+    --good: #3ecf6e;
+    --bad: #e55959;
+    --mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--sans); padding-bottom:90px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header{
+    position:sticky; top:0; z-index:10;
+    background:linear-gradient(180deg, #171b21 0%, #14181d 100%);
+    border-bottom:1px solid var(--line);
+    padding:14px 16px 10px;
+  }
+  .tag{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:12px; color:var(--amber);
+    letter-spacing:.06em; text-transform:uppercase;
+  }
+  h1{font-size:17px; margin:4px 0 2px; font-weight:700;}
+  .sub{color:var(--muted); font-size:12.5px;}
+  .proyecto-btn{
+    margin-top:10px; width:100%; text-align:left;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:9px 12px; border-radius:10px; font-size:12.5px; font-family:var(--sans);
+  }
+
+  .ficha{
+    margin:14px 16px 6px; padding:14px 16px; border-radius:14px;
+    background:radial-gradient(120% 140% at 0% 0%, #2a2210 0%, var(--panel) 55%);
+    border:1px solid var(--amber-dim);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .ficha .num{font-family:var(--mono); font-size:34px; font-weight:700; color:var(--amber); line-height:1;}
+  .ficha .label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+  .ficha .count{text-align:right; font-size:12px; color:var(--muted);}
+  .ficha .count b{color:var(--teal); font-family:var(--mono); font-size:16px;}
+
+  .group{margin:14px 16px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--panel);}
+  .group summary{
+    list-style:none; cursor:pointer; padding:12px 14px;
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:13.5px; font-weight:600; background:var(--panel-2);
+  }
+  .group summary::-webkit-details-marker{display:none;}
+  .group summary .chev{color:var(--muted); transition:transform .15s;}
+  .group[open] summary .chev{transform:rotate(90deg);}
+  .group .body{padding:12px 14px 14px;}
+
+  .field{margin-bottom:12px;}
+  .field label{
+    display:block; font-size:11.5px; color:var(--muted);
+    margin-bottom:5px; letter-spacing:.02em;
+  }
+  .field input, .field select, .field textarea{
+    width:100%; background:#11151a; border:1px solid var(--line);
+    color:var(--text); padding:10px 11px; border-radius:9px;
+    font-size:15px; font-family:var(--mono);
+  }
+  .field textarea{font-family:var(--sans); min-height:54px; resize:vertical;}
+  .field select{-webkit-appearance:none; appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%238b95a3'/></svg>");
+    background-repeat:no-repeat; background-position:right 12px center;}
+  .field input:focus, .field select:focus, .field textarea:focus{
+    outline:none; border-color:var(--amber);
+  }
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .gps-btn{
+    width:100%; background:var(--panel-2); border:1px dashed var(--teal); color:var(--teal);
+    padding:11px; border-radius:9px; font-size:13.5px; font-weight:600; margin-bottom:6px;
+  }
+  .gps-btn.loading{opacity:.6;}
+  .gps-status{font-size:11.5px; color:var(--muted); min-height:14px; margin-bottom:10px;}
+  .gps-status.ok{color:var(--good);}
+  .gps-status.err{color:var(--bad);}
+
+  footer{
+    position:fixed; bottom:0; left:0; right:0; z-index:20;
+    background:#171b21; border-top:1px solid var(--line);
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+    display:flex; gap:10px;
+  }
+  button.primary{
+    flex:1; background:var(--amber); color:#1a1200; border:none;
+    padding:14px; border-radius:11px; font-size:15px; font-weight:700;
+  }
+  button.secondary{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:14px 16px; border-radius:11px; font-size:14px;
+  }
+  button:active{opacity:.8;}
+
+  .toast{
+    position:fixed; top:14px; left:50%; transform:translateX(-50%);
+    background:var(--good); color:#08240f; font-weight:700; font-size:13px;
+    padding:9px 16px; border-radius:20px; z-index:100; opacity:0;
+    transition:opacity .25s, top .25s; pointer-events:none;
+  }
+  .toast.show{opacity:1; top:24px;}
+
+  .list{margin:14px 16px 0;}
+  .list h3{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px;}
+  .item{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:9px 12px; margin-bottom:7px; font-size:13px;
+  }
+  .item .meta{color:var(--muted); font-size:11.5px;}
+  .item .del{color:var(--bad); font-size:12px; background:none; border:none; padding:6px;}
+
+  .overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .sheet{
+    background:var(--panel); width:100%; max-width:480px; border-radius:16px 16px 0 0;
+    padding:16px 16px calc(16px + env(safe-area-inset-bottom)); max-height:85vh; overflow:auto;
+  }
+  .sheet h2{font-size:15px; margin:0 0 12px;}
+  .sheet .close{width:100%; margin-top:8px;}
+</style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<header>
+  <span class="tag">● Proyecto de fibra</span>
+  <h1 id="proyTitle">Cartera de Postería</h1>
+  <div class="sub" id="proySub">Toca "Datos del proyecto" para configurar municipio y ubicación</div>
+  <button class="proyecto-btn" onclick="openProyecto()">⚙ Datos del proyecto</button>
+</header>
+
+<div class="ficha">
+  <div>
+    <div class="label">Consecutivo</div>
+    <div class="num" id="fichaNum">1</div>
+  </div>
+  <div class="count">Registros guardados<br><b id="countNum">0</b></div>
+</div>
+
+<form id="form" onsubmit="return false;">
+
+  <details class="group" open>
+    <summary>Información general <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field">
+        <label>Tipo de elemento</label>
+        <select id="c_A">
+          <option>AEREO</option><option>CANALIZADO</option>
+          <option>CRUCE AMERICANO</option><option>NODO</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Consecutivo elemento</label>
+        <input id="c_B" type="number" inputmode="numeric">
+      </div>
+    </div>
+  </details>
+
+  <details class="group" open>
+    <summary>Ubicación del elemento <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field">
+        <label>Distancia interpostal (m)</label>
+        <input id="c_C" type="number" step="0.01" inputmode="decimal">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Latitud</label>
+          <input id="c_D" type="text" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label>Longitud</label>
+          <input id="c_E" type="text" inputmode="decimal">
+        </div>
+      </div>
+      <button type="button" class="gps-btn" id="gpsBtn" onclick="obtenerUbicacion()">📍 Usar mi ubicación GPS</button>
+      <div class="gps-status" id="gpsStatus"></div>
+      <div class="field">
+        <label>Altura poste (metros)</label>
+        <select id="c_F">
+          <option>ND</option><option>8</option><option>9</option>
+          <option>10</option><option>12</option><option>14</option><option>18</option>
+        </select>
+      </div>
+    </div>
+  </details>
+
+  <details class="group">
+    <summary>Información red eléctrica <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field">
+        <label>Rotura * resistencia poste (libras)</label>
+        <select id="c_G">
+          <option>ND</option><option>510</option><option>750</option>
+          <option>1050</option><option>1350</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Tipo de apoyo</label>
+        <select id="c_H"><option>ND</option><option>SENCILLO</option><option>DOBLE</option></select>
+      </div>
+      <div class="field">
+        <label>Material apoyo</label>
+        <select id="c_I">
+          <option>CONCRETO</option><option>FIBRA DE VIDRIO</option>
+          <option>MADERA</option><option>METALICO</option>
+        </select>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Circuito AT</label><input id="c_J" type="text"></div>
+        <div class="field"><label>Circuito MT</label><input id="c_K" type="text"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Circuito BT</label><input id="c_L" type="text"></div>
+        <div class="field"><label>Circuito AP</label><input id="c_M" type="text"></div>
+      </div>
+      <div class="field">
+        <label>Estado del poste</label>
+        <select id="c_N"><option>ND</option><option>BUENO</option><option>REGULAR</option><option>MALO</option></select>
+      </div>
+      <div class="field">
+        <label>Propietario poste</label>
+        <input id="c_O" type="text" placeholder="Ej. AFINIA">
+      </div>
+      <div class="field">
+        <label>Tipo de cámara</label>
+        <select id="c_P">
+          <option>ND</option><option>F1</option><option>2F1</option>
+          <option>VEHICULAR</option><option>SENCILLO</option><option>DOBLE</option><option>TRIPLE</option>
+        </select>
+      </div>
+    </div>
+  </details>
+
+  <details class="group">
+    <summary>Información de cámaras (si aplica) <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field">
+        <label>Estado cámara</label>
+        <select id="c_Q"><option>ND</option><option>BUENO</option><option>MALO</option></select>
+      </div>
+      <div class="field"><label>Banco de ducto</label><input id="c_R" type="text"></div>
+      <div class="field"><label>Ductos libres</label><input id="c_S" type="text"></div>
+      <div class="field"><label>Ducto a utilizar</label><input id="c_T" type="text"></div>
+      <div class="field"><label>Ocupación ducto electrificadora</label><input id="c_U" type="text"></div>
+      <div class="field"><label>Cables telemáticos existentes</label><input id="c_V" type="text"></div>
+      <div class="field"><label>Ductos ocupados por telemáticos</label><input id="c_W" type="text"></div>
+      <div class="field"><label>Reservas</label><input id="c_X" type="text"></div>
+    </div>
+  </details>
+
+  <details class="group">
+    <summary>Marquilla <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field"><label>Empalme óptico</label><input id="c_Y" type="text"></div>
+    </div>
+  </details>
+
+  <details class="group">
+    <summary>Empalme <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field"><label>Reserva (mts)</label><input id="c_Z" type="text"></div>
+    </div>
+  </details>
+
+  <details class="group">
+    <summary>Información de construcción <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field"><label>Contratista</label><input id="c_AA" type="text"></div>
+    </div>
+  </details>
+
+  <details class="group">
+    <summary>Información de materiales utilizados <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="row2">
+        <div class="field"><label>Retención</label><input id="c_AB" type="text"></div>
+        <div class="field"><label>Suspensión</label><input id="c_AC" type="text"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Tuerca de ojo</label><input id="c_AD" type="text"></div>
+        <div class="field"><label>Amarres plásticos</label><input id="c_AE" type="text"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Band it 1/2</label><input id="c_AF" type="text"></div>
+        <div class="field"><label>Hebillas cinta band it 1/2</label><input id="c_AG" type="text"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Caja de empalme</label><input id="c_AH" type="text"></div>
+        <div class="field"><label>Empalmes mecánicos</label><input id="c_AI" type="text"></div>
+      </div>
+      <div class="field"><label>Trompo platinas</label><input id="c_AJ" type="text"></div>
+    </div>
+  </details>
+
+  <details class="group">
+    <summary>Observaciones <span class="chev">›</span></summary>
+    <div class="body">
+      <div class="field">
+        <textarea id="c_AK" placeholder="Ej. Transformador; Cañuela"></textarea>
+      </div>
+    </div>
+  </details>
+</form>
+
+<div class="list">
+  <h3>Últimos registros</h3>
+  <div id="listBody"></div>
+</div>
+
+<footer>
+  <button class="secondary" onclick="exportExcel()">⬇ Exportar Excel</button>
+  <button class="primary" onclick="guardarRegistro()">Guardar y continuar</button>
+</footer>
+
+<div class="overlay" id="proyOverlay" style="display:none;">
+  <div class="sheet">
+    <h2>Datos del proyecto</h2>
+    <div class="field"><label>Municipio</label><input id="p_municipio" type="text"></div>
+    <div class="field"><label>Ubicación inicial</label><input id="p_inicial" type="text" placeholder="lat, long (Marcador 1)"></div>
+    <div class="field"><label>Ubicación final</label><input id="p_final" type="text" placeholder="lat, long (Marcador N)"></div>
+    <div class="field"><label>Tipo de fibra</label><input id="p_fibra" type="text" placeholder="Ej. FIBRA ÓPTICA"></div>
+    <div class="field"><label>Dirección / zona</label><input id="p_direccion" type="text"></div>
+    <button class="primary close" onclick="closeProyecto()">Listo</button>
+  </div>
+</div>
+
+<script>
+const COLS = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK"];
+const HEADERS = {
+  A:"TIPO DE ELEMENTO", B:"CONSECUTIVO ELEMENTO", C:"DISTANCIA ITERPOSTAL", D:"LATITUD", E:"LONGUITUD",
+  F:"ALTURA POSTE (Metros)", G:"ROTURA * RESISTENCIA POSTE (Libras)", H:"TIPO DE APOYO", I:"MATERIAL  APOYO",
+  J:"TIPO DE CIRCUITO - AT", K:"TIPO DE CIRCUITO - MT", L:"TIPO DE CIRCUITO - BT", M:"TIPO DE CIRCUITO - AP",
+  N:"ESTADO DEL POSTE", O:"PROPIETARIO POSTE", P:"TIPO DE CAMARA", Q:"ESTADO CÁMARA", R:"BANCO DE DUCTO",
+  S:"DUCTOS LIBRES", T:"DUCTO A UTILIZAR", U:"OCUPACION DUCTO ELECTRIFICADORA", V:"CABLES TELEMATICOS EXISTENTES",
+  W:"DUCTOS OCUPADOS POR TELEMATICOS", X:"RESERVAS", Y:"EMPALME OPTICO", Z:"RESERVA (MTS)", AA:"CONTRATISTA",
+  AB:"RETENCION", AC:"SUSPENSION", AD:"TUERCA DE OJO", AE:"AMARRES PLASTICOS", AF:"BAND IT 1/2",
+  AG:"HEBILLAS CINTA BAND IT 1/2", AH:"CAJA DE EMPALME", AI:"EMPALMES MECANICOS", AJ:"TROMPO PLATINAS", AK:"OBSERVACIONES"
+};
+// campos que no deben reiniciarse a "ND"/vacío tras guardar (se repiten seguido)
+const PERSIST_FIELDS = ["A","F","H","I","N","O","P"];
+const DEFAULT_ND = ["G","J","K","L","M","Q","R","S","T","U","V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ"];
+
+let registros = [];
+let proyecto = {municipio:"", inicial:"", final:"", fibra:"", direccion:""};
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1400);
+}
+
+function getVal(col){ return document.getElementById('c_'+col).value.trim(); }
+function setVal(col, v){ document.getElementById('c_'+col).value = v; }
+
+function resetForm(keepConsecutivo){
+  COLS.forEach(col=>{
+    if(col==="B") return; // consecutivo se maneja aparte
+    if(PERSIST_FIELDS.includes(col)) return; // se mantiene el valor anterior
+    if(DEFAULT_ND.includes(col)){ setVal(col, col==="G"||col==="Q"||col==="H" ? "ND" : "ND"); }
+    else { setVal(col, ""); }
+  });
+  setVal("C",""); setVal("D",""); setVal("E","");
+  const next = (parseInt(getVal("B"))||0) + (keepConsecutivo?0:1);
+  setVal("B", next);
+  document.getElementById('fichaNum').textContent = next;
+}
+
+function obtenerUbicacion(){
+  const btn = document.getElementById('gpsBtn');
+  const status = document.getElementById('gpsStatus');
+  if(!navigator.geolocation){
+    status.textContent = "Este navegador no soporta GPS. Ábrelo en Chrome.";
+    status.className = "gps-status err";
+    return;
+  }
+  btn.classList.add('loading');
+  btn.textContent = "📍 Obteniendo ubicación...";
+  status.textContent = "";
+  status.className = "gps-status";
+
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      const lat = pos.coords.latitude.toFixed(7);
+      const lon = pos.coords.longitude.toFixed(7);
+      setVal("D", lat);
+      setVal("E", lon);
+      btn.classList.remove('loading');
+      btn.textContent = "📍 Usar mi ubicación GPS";
+      status.textContent = "Ubicación capturada (precisión ±" + Math.round(pos.coords.accuracy) + " m)";
+      status.className = "gps-status ok";
+      showToast("Coordenadas capturadas");
+    },
+    (err)=>{
+      btn.classList.remove('loading');
+      btn.textContent = "📍 Usar mi ubicación GPS";
+      let msg = "No se pudo obtener la ubicación.";
+      if(err.code === err.PERMISSION_DENIED) msg = "Permiso de ubicación denegado. Actívalo en los ajustes del navegador.";
+      else if(err.code === err.TIMEOUT) msg = "Se agotó el tiempo esperando el GPS. Sal a campo abierto e intenta de nuevo.";
+      status.textContent = msg;
+      status.className = "gps-status err";
+      showToast("No se pudo obtener ubicación");
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+  );
+}
+
+function guardarRegistro(){
+  const reg = {};
+  COLS.forEach(col => reg[col] = getVal(col) || "ND");
+  if(!reg.D || reg.D==="ND" || !reg.E || reg.E==="ND"){
+    if(!confirm("No pusiste latitud/longitud. ¿Guardar de todas formas?")) return;
+  }
+  registros.push(reg);
+  saveStorage();
+  renderList();
+  showToast("Registro "+reg.B+" guardado");
+  resetForm(false);
+}
+
+function eliminarRegistro(idx){
+  registros.splice(idx,1);
+  saveStorage();
+  renderList();
+}
+
+function renderList(){
+  document.getElementById('countNum').textContent = registros.length;
+  const body = document.getElementById('listBody');
+  body.innerHTML = "";
+  registros.slice(-6).reverse().forEach((r)=>{
+    const realIdx = registros.indexOf(r);
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<div><b>#${r.B}</b> · ${r.A}<div class="meta">${r.D!=="ND"?r.D+", "+r.E:"sin coordenadas"}</div></div>
+      <button class="del" onclick="eliminarRegistro(${realIdx})">Borrar</button>`;
+    body.appendChild(div);
+  });
+}
+
+function openProyecto(){
+  document.getElementById('p_municipio').value = proyecto.municipio;
+  document.getElementById('p_inicial').value = proyecto.inicial;
+  document.getElementById('p_final').value = proyecto.final;
+  document.getElementById('p_fibra').value = proyecto.fibra;
+  document.getElementById('p_direccion').value = proyecto.direccion;
+  document.getElementById('proyOverlay').style.display = 'flex';
+}
+function closeProyecto(){
+  proyecto = {
+    municipio: document.getElementById('p_municipio').value.trim(),
+    inicial: document.getElementById('p_inicial').value.trim(),
+    final: document.getElementById('p_final').value.trim(),
+    fibra: document.getElementById('p_fibra').value.trim(),
+    direccion: document.getElementById('p_direccion').value.trim(),
+  };
+  saveStorage();
+  document.getElementById('proyOverlay').style.display = 'none';
+  document.getElementById('proyTitle').textContent = proyecto.municipio || "Cartera de Postería";
+  document.getElementById('proySub').textContent = proyecto.direccion ? ("Zona: "+proyecto.direccion) : "Toca \"Datos del proyecto\" para configurar municipio y ubicación";
+}
+
+async function saveStorage(){
+  try{
+    await window.storage.set('cartera_registros', JSON.stringify(registros), false);
+    await window.storage.set('cartera_proyecto', JSON.stringify(proyecto), false);
+  }catch(e){ console.error('storage error', e); }
+}
+
+async function loadStorage(){
+  try{
+    const r = await window.storage.get('cartera_registros', false);
+    if(r && r.value) registros = JSON.parse(r.value);
+  }catch(e){ registros = []; }
+  try{
+    const p = await window.storage.get('cartera_proyecto', false);
+    if(p && p.value) proyecto = JSON.parse(p.value);
+  }catch(e){}
+  renderList();
+  closeProyecto(); // solo para refrescar título/subtítulo, no abre overlay
+  document.getElementById('proyOverlay').style.display = 'none';
+  const maxB = registros.reduce((m,r)=>Math.max(m, parseInt(r.B)||0), 0);
+  setVal("B", maxB+1);
+  document.getElementById('fichaNum').textContent = maxB+1;
+}
+
+function exportExcel(){
+  if(registros.length===0){ showToast("No hay registros guardados"); return; }
+  const wb = XLSX.utils.book_new();
+  const aoa = [];
+  aoa.push(["MUNICIPIO", proyecto.municipio||"ND"]);
+  aoa.push(["UBICACIÓN INICIAL", proyecto.inicial||"ND"]);
+  aoa.push(["UBICACIÓN FINAL", proyecto.final||"ND"]);
+  aoa.push(["TIPO DE FIBRA", proyecto.fibra||"ND"]);
+  aoa.push(["DIRECION", proyecto.direccion||"ND"]);
+  aoa.push([]);
+  aoa.push([]);
+  aoa.push(["INFORMACION GENERAL","","INFORMACION DE UBICACIÓN DEL ELEMENTO","","","","INFORMACION RED ELÉTRICA"]);
+  aoa.push(COLS.map(c=>HEADERS[c]));
+  registros.forEach(r=> aoa.push(COLS.map(c=>r[c])));
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = [
+    {s:{r:0,c:1},e:{r:0,c:4}}, {s:{r:1,c:1},e:{r:1,c:4}}, {s:{r:2,c:1},e:{r:2,c:4}},
+    {s:{r:3,c:1},e:{r:3,c:4}}, {s:{r:4,c:1},e:{r:4,c:4}}
+  ];
+  ws['!cols'] = COLS.map(()=>({wch:16}));
+  XLSX.utils.book_append_sheet(wb, ws, "Proyecto Cordoba");
+
+  const fname = "CARTERA_" + (proyecto.municipio||"POSTERIA").replace(/\s+/g,'_').toUpperCase() + ".xlsx";
+  XLSX.writeFile(wb, fname);
+}
+
+// inicializar selects con "ND" por defecto donde aplica
+DEFAULT_ND.forEach(col=>{ if(document.getElementById('c_'+col) && document.getElementById('c_'+col).tagName!=='SELECT') setVal(col,"ND"); });
+setVal("H","ND"); setVal("N","ND"); setVal("P","ND"); setVal("Q","ND"); setVal("G","ND");
+setVal("A","AEREO"); setVal("I","CONCRETO"); setVal("B","1");
+
+loadStorage();
+</script>
+</body>
+</html>
