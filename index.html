@@ -404,8 +404,8 @@ function obtenerUbicacion(){
 
   navigator.geolocation.getCurrentPosition(
     (pos)=>{
-      const lat = pos.coords.latitude.toFixed(7);
-      const lon = pos.coords.longitude.toFixed(7);
+      const lat = pos.coords.latitude.toFixed(6);
+      const lon = pos.coords.longitude.toFixed(6);
       setVal("D", lat);
       setVal("E", lon);
       btn.classList.remove('loading');
@@ -485,19 +485,19 @@ function closeProyecto(){
 
 async function saveStorage(){
   try{
-    await window.storage.set('cartera_registros', JSON.stringify(registros), false);
-    await window.storage.set('cartera_proyecto', JSON.stringify(proyecto), false);
+    localStorage.setItem('cartera_registros', JSON.stringify(registros));
+    localStorage.setItem('cartera_proyecto', JSON.stringify(proyecto));
   }catch(e){ console.error('storage error', e); }
 }
 
 async function loadStorage(){
   try{
-    const r = await window.storage.get('cartera_registros', false);
-    if(r && r.value) registros = JSON.parse(r.value);
+    const r = localStorage.getItem('cartera_registros');
+    if(r) registros = JSON.parse(r);
   }catch(e){ registros = []; }
   try{
-    const p = await window.storage.get('cartera_proyecto', false);
-    if(p && p.value) proyecto = JSON.parse(p.value);
+    const p = localStorage.getItem('cartera_proyecto');
+    if(p) proyecto = JSON.parse(p);
   }catch(e){}
   renderList();
   closeProyecto(); // solo para refrescar título/subtítulo, no abre overlay
