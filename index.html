@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Cartera de Postería</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script>
   (function(){
     var saved = 'dark';
@@ -204,11 +204,11 @@
 <header>
   <div class="header-top">
     <span class="tag">● Proyecto de fibra</span>
-    <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Cambiar tema">🌙</button>
+    <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema claro u oscuro">🌙</button>
   </div>
   <h1 id="proyTitle">Cartera de Postería</h1>
   <div class="sub" id="proySub">Toca "Datos del proyecto" para configurar municipio y ubicación</div>
-  <button class="proyecto-btn" onclick="openProyecto()">⚙ Datos del proyecto</button>
+  <button type="button" class="proyecto-btn" onclick="openProyecto()">⚙ Datos del proyecto</button>
 </header>
 
 <div class="ficha">
@@ -405,8 +405,8 @@
 </div>
 
 <footer>
-  <button class="secondary" onclick="exportExcel()">⬇ Exportar Excel</button>
-  <button class="primary" id="saveBtn" onclick="guardarRegistro()">Guardar y continuar</button>
+  <button type="button" class="secondary" onclick="exportExcel()">⬇ Exportar Excel</button>
+  <button type="button" class="primary" id="saveBtn" onclick="guardarRegistro()">Guardar y continuar</button>
 </footer>
 
 <div class="overlay" id="proyOverlay" style="display:none;">
@@ -417,7 +417,7 @@
     <div class="field"><label>Ubicación final</label><input id="p_final" type="text" placeholder="lat, long (Marcador N)"></div>
     <div class="field"><label>Tipo de fibra</label><input id="p_fibra" type="text" placeholder="Ej. FIBRA ÓPTICA"></div>
     <div class="field"><label>Dirección / zona</label><input id="p_direccion" type="text"></div>
-    <button class="primary close" onclick="closeProyecto()">Listo</button>
+    <button type="button" class="primary close" onclick="closeProyecto()">Listo</button>
   </div>
 </div>
 
@@ -426,8 +426,8 @@
     <h2 id="confirmTitle">Confirmar</h2>
     <div class="confirm-msg" id="confirmMsg"></div>
     <div class="confirm-row">
-      <button class="secondary" onclick="closeConfirm(false)">Cancelar</button>
-      <button class="primary" id="confirmOkBtn" onclick="closeConfirm(true)">Confirmar</button>
+      <button type="button" class="secondary" onclick="closeConfirm(false)">Cancelar</button>
+      <button type="button" class="primary" id="confirmOkBtn" onclick="closeConfirm(true)">Confirmar</button>
     </div>
   </div>
 </div>
@@ -519,6 +519,15 @@ function nextConsecutivo(){
   return registros.reduce((m,r)=>Math.max(m, parseInt(r.B)||0), 0) + 1;
 }
 
+// Calcula el siguiente consecutivo, lo pone en el campo B y lo refleja en la ficha visual.
+// Centraliza un patrón que antes estaba repetido en 4 lugares del código.
+function sincronizarConsecutivo(){
+  const next = nextConsecutivo();
+  setVal("B", next);
+  document.getElementById('fichaNum').textContent = next;
+  return next;
+}
+
 function resetForm(keepConsecutivo){
   COLS.forEach(col=>{
     if(col==="B") return; // consecutivo se maneja aparte
@@ -532,6 +541,15 @@ function resetForm(keepConsecutivo){
   document.getElementById('fichaNum').textContent = next;
 }
 
+// Umbral de precisión que consideramos "buena" para un registro de campo (metros)
+const GPS_ACCURACY_GOOD = 8;
+// Tiempo máximo total esperando una mejor señal antes de resignarse a la mejor lectura obtenida (ms)
+const GPS_MAX_WAIT = 25000;
+
+let gpsWatchId = null;
+let gpsTimeoutId = null;
+let gpsBestPos = null;
+
 function obtenerUbicacion(){
   const btn = document.getElementById('gpsBtn');
   const status = document.getElementById('gpsStatus');
@@ -540,35 +558,88 @@ function obtenerUbicacion(){
     status.className = "gps-status err";
     return;
   }
+  if(window.isSecureContext === false){
+    status.textContent = "El GPS solo funciona con conexión segura (https). Verifica cómo abriste la app.";
+    status.className = "gps-status err";
+    return;
+  }
+  // por si quedó un intento anterior activo
+  finalizarGPS(false, true);
+
+  gpsBestPos = null;
   btn.classList.add('loading');
-  btn.textContent = "📍 Obteniendo ubicación...";
-  status.textContent = "";
+  btn.disabled = true;
+  btn.textContent = "📍 Buscando señal GPS...";
+  status.textContent = "Espera unos segundos. Si puedes, ubícate a cielo abierto, lejos de paredes o techos.";
   status.className = "gps-status";
 
-  navigator.geolocation.getCurrentPosition(
+  gpsWatchId = navigator.geolocation.watchPosition(
     (pos)=>{
-      const lat = pos.coords.latitude.toFixed(6);
-      const lon = pos.coords.longitude.toFixed(6);
-      setVal("D", lat);
-      setVal("E", lon);
-      btn.classList.remove('loading');
-      btn.textContent = "📍 Usar mi ubicación GPS";
-      status.textContent = "Ubicación capturada (precisión ±" + Math.round(pos.coords.accuracy) + " m)";
-      status.className = "gps-status ok";
-      showToast("Coordenadas capturadas");
+      // nos quedamos siempre con la lectura de menor margen de error recibida hasta ahora
+      if(!gpsBestPos || pos.coords.accuracy < gpsBestPos.coords.accuracy){
+        gpsBestPos = pos;
+        setVal("D", pos.coords.latitude.toFixed(6));
+        setVal("E", pos.coords.longitude.toFixed(6));
+      }
+      const acc = Math.round(gpsBestPos.coords.accuracy);
+      if(acc <= GPS_ACCURACY_GOOD){
+        finalizarGPS(true);
+      } else {
+        btn.textContent = "📍 Afinando señal (±" + acc + " m)...";
+        status.textContent = "Mejorando precisión: ±" + acc + " m. Buscando algo mejor que ±" + GPS_ACCURACY_GOOD + " m...";
+        status.className = "gps-status";
+      }
     },
     (err)=>{
-      btn.classList.remove('loading');
-      btn.textContent = "📍 Usar mi ubicación GPS";
-      let msg = "No se pudo obtener la ubicación.";
-      if(err.code === err.PERMISSION_DENIED) msg = "Permiso de ubicación denegado. Actívalo en los ajustes del navegador.";
-      else if(err.code === err.TIMEOUT) msg = "Se agotó el tiempo esperando el GPS. Sal a campo abierto e intenta de nuevo.";
-      status.textContent = msg;
-      status.className = "gps-status err";
-      showToast("No se pudo obtener ubicación");
+      // un error puntual (p.ej. timeout de una lectura) no cancela el intento si ya tenemos alguna lectura válida;
+      // seguimos esperando hasta el tiempo máximo por si llega una mejor
+      if(err.code === err.PERMISSION_DENIED){
+        status.textContent = "Permiso de ubicación denegado. Actívalo en los ajustes del navegador.";
+        status.className = "gps-status err";
+        finalizarGPS(!!gpsBestPos, true);
+      } else if(!gpsBestPos){
+        status.textContent = "Buscando señal GPS... (puede tardar más bajo techo)";
+        status.className = "gps-status";
+      }
     },
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
   );
+
+  gpsTimeoutId = setTimeout(()=>{
+    finalizarGPS(!!gpsBestPos);
+  }, GPS_MAX_WAIT);
+}
+
+function finalizarGPS(success, silent){
+  if(gpsWatchId !== null){ navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
+  if(gpsTimeoutId !== null){ clearTimeout(gpsTimeoutId); gpsTimeoutId = null; }
+  if(silent) return;
+
+  const btn = document.getElementById('gpsBtn');
+  const status = document.getElementById('gpsStatus');
+  btn.classList.remove('loading');
+  btn.disabled = false;
+  btn.textContent = "📍 Usar mi ubicación GPS";
+
+  if(success && gpsBestPos){
+    const acc = Math.round(gpsBestPos.coords.accuracy);
+    status.textContent = "Ubicación capturada (precisión ±" + acc + " m)" + (acc > GPS_ACCURACY_GOOD ? " · revisa si puedes repetir en campo más abierto" : "");
+    status.className = acc <= GPS_ACCURACY_GOOD ? "gps-status ok" : "gps-status";
+    showToast("Coordenadas capturadas");
+  } else if(!gpsBestPos){
+    status.textContent = "No se pudo obtener una ubicación válida. Intenta de nuevo a cielo abierto.";
+    status.className = "gps-status err";
+    showToast("No se pudo obtener ubicación");
+  }
+}
+
+// Detecta valores fuera del rango físicamente posible (útil para errores de tipeo manual;
+// las coordenadas tomadas por GPS siempre caen dentro de este rango).
+function coordenadasFueraDeRango(lat, lon){
+  const la = parseFloat(lat);
+  const lo = parseFloat(lon);
+  if(isNaN(la) || isNaN(lo)) return false;
+  return la < -90 || la > 90 || lo < -180 || lo > 180;
 }
 
 function guardarRegistro(){
@@ -576,6 +647,8 @@ function guardarRegistro(){
   COLS.forEach(col => reg[col] = getVal(col) || "ND");
   if(!reg.D || reg.D==="ND" || !reg.E || reg.E==="ND"){
     if(!confirm("No pusiste latitud/longitud. ¿Guardar de todas formas?")) return;
+  } else if(coordenadasFueraDeRango(reg.D, reg.E)){
+    if(!confirm("La latitud/longitud parece fuera de rango válido (revisa si hay un error de tipeo). ¿Guardar de todas formas?")) return;
   }
   const isEdit = editingIndex !== null;
   const title = isEdit ? "Actualizar registro" : "Guardar registro";
@@ -595,9 +668,7 @@ function guardarRegistro(){
     saveStorage();
     renderList();
     resetForm(false);
-    const next = nextConsecutivo();
-    setVal("B", next);
-    document.getElementById('fichaNum').textContent = next;
+    sincronizarConsecutivo();
   });
 }
 
@@ -619,9 +690,7 @@ function cancelEdit(){
   document.getElementById('editIndicator').style.display = 'none';
   document.getElementById('saveBtn').textContent = 'Guardar y continuar';
   resetForm(true);
-  const next = nextConsecutivo();
-  setVal("B", next);
-  document.getElementById('fichaNum').textContent = next;
+  sincronizarConsecutivo();
   showToast('Edición cancelada');
 }
 
@@ -638,11 +707,17 @@ function eliminarRegistro(idx){
     }
     saveStorage();
     renderList();
-    const next = nextConsecutivo();
-    setVal("B", next);
-    document.getElementById('fichaNum').textContent = next;
+    sincronizarConsecutivo();
     showToast('Registro eliminado');
   });
+}
+
+// Evita que texto libre del usuario (observaciones, contratista, etc.) rompa el HTML
+// o inyecte marcado si contiene caracteres como <, >, & o comillas.
+function escapeHtml(value){
+  return String(value).replace(/[&<>"']/g, (c)=>({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
 }
 
 function renderList(){
@@ -653,10 +728,13 @@ function renderList(){
     const realIdx = registros.indexOf(r);
     const div = document.createElement('div');
     div.className = 'item';
-    div.innerHTML = `<div><b>#${r.B}</b> · ${r.A}<div class="meta">${r.D!=="ND"?r.D+", "+r.E:"sin coordenadas"}</div></div>
+    const numero = escapeHtml(r.B);
+    const tipo = escapeHtml(r.A);
+    const coords = r.D!=="ND" ? escapeHtml(r.D)+", "+escapeHtml(r.E) : "sin coordenadas";
+    div.innerHTML = `<div><b>#${numero}</b> · ${tipo}<div class="meta">${coords}</div></div>
       <div class="actions">
-        <button class="edit" onclick="editarRegistro(${realIdx})">Editar</button>
-        <button class="del" onclick="eliminarRegistro(${realIdx})">Borrar</button>
+        <button type="button" class="edit" onclick="editarRegistro(${realIdx})">Editar</button>
+        <button type="button" class="del" onclick="eliminarRegistro(${realIdx})">Borrar</button>
       </div>`;
     body.appendChild(div);
   });
@@ -703,13 +781,15 @@ async function loadStorage(){
   renderList();
   closeProyecto(); // solo para refrescar título/subtítulo, no abre overlay
   document.getElementById('proyOverlay').style.display = 'none';
-  const next = nextConsecutivo();
-  setVal("B", next);
-  document.getElementById('fichaNum').textContent = next;
+  sincronizarConsecutivo();
 }
 
 function exportExcel(){
   if(registros.length===0){ showToast("No hay registros guardados"); return; }
+  if(typeof XLSX === 'undefined'){
+    showToast("Aún cargando el exportador, intenta de nuevo en un segundo");
+    return;
+  }
   const wb = XLSX.utils.book_new();
   const aoa = [];
   aoa.push(["MUNICIPIO", proyecto.municipio||"ND"]);
